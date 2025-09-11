@@ -1,0 +1,101 @@
+#include <SD.h> 
+#include <SPI.h>
+
+// Pines de sensores de humedad
+const int pinesHUM[] = {A0, A1, A2, A3, A4, A5, A6, A7};
+const int numSensores = 8;
+float voltajesHUM[numSensores];  
+float humedades[numSensores];   
+
+// Pines de LEDs (deben estar en pines PWM si quieres variar brillo)
+// En Arduino Mega los PWM son: 2–13 y 44–46. Ajusta según disponibilidad.
+const int pinesLED[] = {2, 3, 5, 6, 7, 8, 9, 10};
+
+// Pin CS del módulo SD
+const int chipSelect = 4;
+
+unsigned long tiempoInicio;
+
+void setup() {
+  for (int i = 0; i < numSensores; i++) {
+    pinMode(pinesLED[i], OUTPUT);
+  }
+
+  Serial.begin(9600);
+
+  // Inicializar SD
+  if (!SD.begin(chipSelect)) {
+    Serial.println("Error al iniciar la tarjeta SD.");
+    while (true);
+  }
+  Serial.println("Tarjeta SD inicializada.");
+
+  // Encabezado en SD
+  File archivo = SD.open("datos.txt", FILE_WRITE);
+  if (archivo) {
+    archivo.print("Tiempo(s)");
+    for (int i = 0; i < numSensores; i++) {
+      archivo.print(",Voltaje"); archivo.print(i + 1);
+      archivo.print(",Humedad"); archivo.print(i + 1);
+    }
+    archivo.println();
+    archivo.close();
+  }
+
+  // Encabezado en Serial
+  Serial.print("Tiempo(s)\t");
+  for (int i = 0; i < numSensores; i++) {
+    Serial.print("Voltaje"); Serial.print(i + 1); Serial.print("(V)\t");
+    Serial.print("Humedad"); Serial.print(i + 1); Serial.print("(%)\t");
+  }
+  Serial.println();
+
+  tiempoInicio = millis();
+}
+
+void loop() {
+  for (int i = 0; i < numSensores; i++) {
+    int valorADC = analogRead(pinesHUM[i]);
+
+    // Calcular voltaje real
+    float voltaje = valorADC * (5.0 / 1023.0);
+    voltajesHUM[i] = voltaje;
+
+    // Convertir voltaje a % de humedad (0.14V = 0%, 5V = 100%)
+    float humedad = (voltaje  / 5.0 ) * 100.0;
+
+    // Limitar entre 0 y 100
+    if (humedad < 0) humedad = 0;
+    if (humedad > 100) humedad = 100;
+
+    humedades[i] = humedad;
+
+    // Brillo LED proporcional a humedad
+    int brillo = map(humedad, 0, 100, 0, 255);
+    analogWrite(pinesLED[i], brillo);
+  }
+
+  unsigned long tiempoActual = (millis() - tiempoInicio) / 1000;
+
+  // Mostrar en Serial
+  Serial.print(tiempoActual); Serial.print("\t");
+  for (int i = 0; i < numSensores; i++) {
+    Serial.print(voltajesHUM[i], 2); Serial.print("\t");
+    Serial.print(humedades[i], 1); Serial.print("\t");
+  }
+  Serial.println();
+
+  // Guardar en SD
+  File archivo = SD.open("datos.txt", FILE_WRITE);
+  if (archivo) {
+    archivo.print(tiempoActual);
+    for (int i = 0; i < numSensores; i++) {
+      archivo.print(","); archivo.print(voltajesHUM[i], 2);
+      archivo.print(","); archivo.print(humedades[i], 1);
+    }
+    archivo.println();
+    archivo.close();
+  }
+
+  delay(1000);
+}
